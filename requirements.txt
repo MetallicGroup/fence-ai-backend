@@ -8,3 +8,4 @@ xformers==0.0.22.post7
 segment-anything
 accelerate
 opencv-python
+huggingface_hub
