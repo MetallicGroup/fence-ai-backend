@@ -1,69 +1,55 @@
-from flask import Flask, request, jsonify, send_file
+import gradio as gr
 import torch
 import numpy as np
 from PIL import Image
-import io
-from diffusers import StableDiffusionControlNetInpaintPipeline, ControlNetModel
-from segment_anything import sam_model_registry, SamPredictor
-from huggingface_hub import hf_hub_download
+from diffusers import StableDiffusionInpaintPipeline
 
-# Configurații
+# Device
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# === Download + Load SAM ===
-checkpoint = hf_hub_download(
-    repo_id="MetallicGroup/sam-vit-checkpoint",
-    filename="sam_vit_h_4b8939.pth"
-)
-sam = sam_model_registry["vit_h"](checkpoint=checkpoint).to(DEVICE)
-predictor = SamPredictor(sam)
-
-# === Load ControlNet + Inpainting ===
-controlnet = ControlNetModel.from_pretrained("lllyasviel/controlnet-inpaint", torch_dtype=torch.float16).to(DEVICE)
-pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
+# Load inpainting pipeline
+pipe = StableDiffusionInpaintPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
-    controlnet=controlnet,
-    torch_dtype=torch.float16
+    torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32
 ).to(DEVICE)
-pipe.enable_xformers_memory_efficient_attention()
 
-# === App ===
-app = Flask(__name__)
+# Prompt map
+PROMPT_MAP = {
+    "MX15": "A house with modern MX15 metal fence, vertical slats between concrete posts.",
+    "MX25": "A house with MX25 horizontal metal fence, clean modern look between posts.",
+    "MX60": "A house with dense horizontal MX60 metallic fence between concrete pillars."
+}
 
-def segment_mask(image):
-    image_np = np.array(image)
-    h, w, _ = image_np.shape
-    predictor.set_image(image_np)
-    input_box = np.array([0, int(h * 0.5), w, h])
-    masks, _, _ = predictor.predict(box=input_box[None, :], multimask_output=False)
-    return Image.fromarray((masks[0].astype(np.uint8) * 255)).convert("L")
+# Generate image
+def generate(image, mask, model_type):
+    image = image.resize((768, 768))
+    mask = mask.resize((768, 768)).convert("L")
+    prompt = PROMPT_MAP.get(model_type, "modern metal fence")
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    try:
-        model_img = Image.open(io.BytesIO(request.files['model'].read())).convert("RGB").resize((768, 768))
-        client_img = Image.open(io.BytesIO(request.files['client'].read())).convert("RGB").resize((768, 768))
-        mask_img = segment_mask(client_img)
+    result = pipe(
+        prompt=prompt,
+        image=image,
+        mask_image=mask,
+        guidance_scale=8.0,
+        num_inference_steps=40
+    ).images[0]
 
-        result = pipe(
-            prompt="",
-            image=client_img,
-            mask_image=mask_img,
-            control_image=model_img,
-            guidance_scale=9.0,
-            num_inference_steps=40
-        ).images[0]
+    return result
 
-        output = io.BytesIO()
-        result.save(output, format='PNG')
-        output.seek(0)
-        return send_file(output, mimetype='image/png')
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# UI
+with gr.Blocks() as demo:
+    gr.Markdown("# 🧠 Fence AI – Înlocuire gard cu desen manual")
 
-@app.route("/")
-def home():
-    return "Fence AI backend running"
+    with gr.Row():
+        with gr.Column():
+            input_image = gr.Image(label="1️⃣ Încarcă poza cu gardul", type="pil")
+            sketch_mask = gr.Sketchpad(label="2️⃣ Desenează zona gardului de înlocuit", shape=(512, 512))
+            dropdown = gr.Dropdown(["MX15", "MX25", "MX60"], label="3️⃣ Alege modelul de gard")
+            btn = gr.Button("🎨 Generează gardul AI")
+        with gr.Column():
+            output = gr.Image(label="✅ Rezultat")
+
+    btn.click(fn=generate, inputs=[input_image, sketch_mask, dropdown], outputs=output)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5050)
+    demo.launch(server_name="0.0.0.0", server_port=8080)
