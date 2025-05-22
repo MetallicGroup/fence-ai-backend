@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 from diffusers import StableDiffusionInpaintPipeline
 
+
 # Device
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
