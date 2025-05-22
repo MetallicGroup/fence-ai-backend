@@ -1,18 +1,20 @@
-
 from flask import Flask, request, jsonify, send_file
 import torch
 import numpy as np
 from PIL import Image
 import io
-import os
 from diffusers import StableDiffusionControlNetInpaintPipeline, ControlNetModel
 from segment_anything import sam_model_registry, SamPredictor
+from huggingface_hub import hf_hub_download
 
 # Configurații
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# === Load SAM ===
-checkpoint = "sam_vit_h_4b8939.pth"  # pune fișierul în același director
+# === Download + Load SAM ===
+checkpoint = hf_hub_download(
+    repo_id="MetallicGroup/sam-vit-checkpoint",
+    filename="sam_vit_h_4b8939.pth"
+)
 sam = sam_model_registry["vit_h"](checkpoint=checkpoint).to(DEVICE)
 predictor = SamPredictor(sam)
 
