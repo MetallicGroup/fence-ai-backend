@@ -1,27 +1,25 @@
 import gradio as gr
 import torch
-import numpy as np
 from PIL import Image
 from diffusers import StableDiffusionInpaintPipeline
 
+# Selectăm dispozitivul
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Device
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-# Load inpainting pipeline
+# Încărcăm modelul de inpainting
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
-    torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32
-).to(DEVICE)
+    torch_dtype=torch.float16 if device == "cuda" else torch.float32
+).to(device)
 
-# Prompt map
+# Prompturi pentru fiecare model de gard
 PROMPT_MAP = {
-    "MX15": "A house with modern MX15 metal fence, vertical slats between concrete posts.",
-    "MX25": "A house with MX25 horizontal metal fence, clean modern look between posts.",
-    "MX60": "A house with dense horizontal MX60 metallic fence between concrete pillars."
+    "MX15": "A modern vertical MX15 metal fence between concrete pillars in front of a house, realistic photo, sharp",
+    "MX25": "A modern horizontal MX25 aluminum fence, realistic look, inserted between concrete pillars",
+    "MX60": "A dense dark horizontal MX60 metal fence between classic concrete fence posts, photorealistic"
 }
 
-# Generate image
+# Funcția de generare
 def generate(image, mask, model_type):
     image = image.resize((768, 768))
     mask = mask.resize((768, 768)).convert("L")
@@ -37,20 +35,20 @@ def generate(image, mask, model_type):
 
     return result
 
-# UI
+# UI Gradio
 with gr.Blocks() as demo:
-    gr.Markdown("# 🧠 Fence AI – Înlocuire gard cu desen manual")
+    gr.Markdown("## 🧠 Fence AI – Înlocuire gard desenată manual")
 
     with gr.Row():
         with gr.Column():
-            input_image = gr.Image(label="1️⃣ Încarcă poza cu gardul", type="pil")
-            sketch_mask = gr.Sketchpad(label="2️⃣ Desenează zona gardului de înlocuit", shape=(512, 512))
+            image_input = gr.Image(label="1️⃣ Încarcă imaginea", type="pil")
+            mask_input = gr.Sketchpad(label="2️⃣ Desenează zona gardului", shape=(512, 512))
             dropdown = gr.Dropdown(["MX15", "MX25", "MX60"], label="3️⃣ Alege modelul de gard")
-            btn = gr.Button("🎨 Generează gardul AI")
+            generate_btn = gr.Button("🎨 Generează imaginea")
         with gr.Column():
-            output = gr.Image(label="✅ Rezultat")
+            output = gr.Image(label="✅ Gardul AI")
 
-    btn.click(fn=generate, inputs=[input_image, sketch_mask, dropdown], outputs=output)
+    generate_btn.click(fn=generate, inputs=[image_input, mask_input, dropdown], outputs=output)
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=8080)
+    demo.launch()
